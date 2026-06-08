@@ -1,0 +1,392 @@
+DROP TABLE IF EXISTS greenhouse.change_history;
+DROP TABLE IF EXISTS greenhouse.sensors;
+DROP TABLE IF EXISTS greenhouse.cells;
+DROP TABLE IF EXISTS greenhouse.seed_batches;
+DROP TABLE IF EXISTS greenhouse.racks;
+DROP TABLE IF EXISTS greenhouse.seed_cultures;
+DROP TABLE IF EXISTS greenhouse.suppliers;
+
+DROP SCHEMA IF EXISTS greenhouse CASCADE;
+
+CREATE SCHEMA IF NOT EXISTS greenhouse;
+
+CREATE TABLE greenhouse.suppliers (
+    id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    company_name VARCHAR(200) NOT NULL,
+    contact_info VARCHAR(500),
+    rating NUMERIC(3,2)
+        CONSTRAINT chk_suppliers_rating
+        CHECK (rating >= 0 AND rating <= 5),
+    CONSTRAINT uq_suppliers_company_name
+        UNIQUE (company_name)
+);
+
+CREATE TABLE greenhouse.seed_cultures (
+    id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    ideal_conditions VARCHAR(1000),
+    variety VARCHAR(200) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    CONSTRAINT uq_seed_cultures_name_variety
+        UNIQUE (name, variety)
+);
+
+CREATE TABLE greenhouse.racks (
+    id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    installation_date DATE NOT NULL,
+    tier_count SMALLINT NOT NULL
+        CONSTRAINT chk_racks_tier_count
+        CHECK (tier_count > 0),
+    name VARCHAR(200) NOT NULL,
+    CONSTRAINT uq_racks_name
+        UNIQUE (name)
+);
+
+CREATE TABLE greenhouse.seed_batches (
+    id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    culture_id INT NOT NULL,
+    supplier_id INT NOT NULL,
+    delivery_date DATE NOT NULL,
+    germination_percent NUMERIC(5,2) NOT NULL
+        CONSTRAINT chk_seed_batches_germination_percent
+        CHECK (germination_percent >= 0 AND germination_percent <= 100),
+
+    CONSTRAINT fk_seed_batches_culture
+        FOREIGN KEY (culture_id)
+        REFERENCES greenhouse.seed_cultures(id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_seed_batches_supplier
+        FOREIGN KEY (supplier_id)
+        REFERENCES greenhouse.suppliers(id)
+        ON DELETE RESTRICT
+);
+
+CREATE TABLE greenhouse.cells (
+    id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    rack_id INT NOT NULL,
+    current_culture INT,
+    planting_date DATE,
+
+    CONSTRAINT fk_cells_rack
+        FOREIGN KEY (rack_id)
+        REFERENCES greenhouse.racks(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_cells_current_culture
+        FOREIGN KEY (current_culture)
+        REFERENCES greenhouse.seed_cultures(id)
+        ON DELETE SET NULL
+);
+
+CREATE TABLE greenhouse.sensors (
+    id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    cell_id INT NOT NULL,
+    sensor_type VARCHAR(100) NOT NULL,
+    calibration_date DATE,
+
+    CONSTRAINT fk_sensors_cell
+        FOREIGN KEY (cell_id)
+        REFERENCES greenhouse.cells(id)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE greenhouse.change_history (
+    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    sensor_id INT NOT NULL,
+    value NUMERIC(10,2) NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_change_history_sensor
+        FOREIGN KEY (sensor_id)
+        REFERENCES greenhouse.sensors(id)
+        ON DELETE CASCADE
+);
+
+ALTER TABLE greenhouse.sensors
+ADD COLUMN status VARCHAR(50) DEFAULT 'active';
+
+ALTER TABLE greenhouse.change_history
+ADD CONSTRAINT chk_change_history_value
+CHECK (value >= 0);
+
+ALTER TABLE greenhouse.sensors
+DROP COLUMN status;
+
+INSERT INTO greenhouse.suppliers
+(company_name, contact_info, rating)
+VALUES
+('Зелёный уголок', '+7 (495) 123-45-67, г. Москва, ул. Садовая, д. 15', 4.9),
+('Садовые традиции', '+7 (812) 987-65-43, г. Санкт-Петербург, пр-т Лесной, д. 42', 4.7),
+('Рассада Плюс', '+7 (343) 555-11-22, г. Екатеринбург, ул. Цветников, д. 8', 4.5),
+('ЭкоСад-Профи', '+7 (843) 777-88-99, г. Казань, ул. Зелёная, д. 25', 4.8),
+('Цветущий край', '+7 (861) 333-44-55, г. Краснодар, ул. Южная, д. 77', 4.6);
+
+INSERT INTO greenhouse.seed_cultures
+(ideal_conditions, variety, name)
+VALUES
+('Температура 20-25°C, влажность 60-70%, освещение 12-14 ч', 'Санька F1', 'Томат'),
+('Температура 18-22°C, влажность 70-80%', 'Носовский', 'Огурец'),
+('Температура 15-20°C', 'Весенний', 'Перец сладкий'),
+('Температура 22-28°C, полный свет', 'Королевский', 'Базилик'),
+('Температура 16-18°C', 'Лондон', 'Салат айсберг');
+
+INSERT INTO greenhouse.racks
+(installation_date, tier_count, name)
+VALUES
+('2023-05-10', 3, 'Стеллаж А1'),
+('2023-06-15', 4, 'Стеллаж Б2'),
+('2024-01-20', 2, 'Стеллаж В3'),
+('2024-02-01', 5, 'Стеллаж Г4'),
+('2024-03-10', 3, 'Стеллаж Д5');
+
+INSERT INTO greenhouse.seed_batches
+(culture_id, supplier_id, delivery_date, germination_percent)
+VALUES
+(1, 1, '2024-02-15', 94.50),
+(2, 2, '2024-03-01', 87.20),
+(4, 4, '2024-03-20', 96.00);
+
+INSERT INTO greenhouse.cells
+(rack_id, current_culture, planting_date)
+VALUES
+(1, 1, '2024-03-01'),
+(2, 2, '2024-03-15'),
+(3, NULL, NULL);
+
+INSERT INTO greenhouse.sensors
+(cell_id, sensor_type, calibration_date)
+VALUES
+(1, 'температура', '2024-02-28'),
+(2, 'влажность', '2024-03-10'),
+(3, 'освещённость', '2024-03-05');
+
+INSERT INTO greenhouse.change_history
+(sensor_id, value, recorded_at)
+VALUES
+(1, 23.50, '2024-03-25 08:00:00+00'),
+(1, 24.10, '2024-03-25 12:00:00+00'),
+(2, 68.00, '2024-03-25 10:30:00+00')
+RETURNING id;
+
+SELECT * FROM greenhouse.cells;
+
+SELECT
+    id,
+    rack_id,
+    planting_date
+FROM greenhouse.cells;
+
+SELECT *
+FROM greenhouse.seed_batches
+WHERE germination_percent > 90;
+
+SELECT *
+FROM greenhouse.suppliers
+WHERE company_name = 'ЭкоСад-Профи';
+
+SELECT *
+FROM greenhouse.seed_batches
+WHERE germination_percent > 85
+AND delivery_date > '2024-03-01';
+
+SELECT *
+FROM greenhouse.suppliers
+WHERE rating IN (4.8, 5.0);
+
+SELECT *
+FROM greenhouse.cells
+WHERE current_culture IS NULL;
+
+SELECT *
+FROM greenhouse.cells
+WHERE current_culture IS NULL
+ORDER BY planting_date DESC NULLS LAST
+LIMIT 3;
+
+SELECT
+    id,
+    germination_percent,
+    germination_percent * 1.2 AS germination_bonus_percent
+FROM greenhouse.seed_batches;
+
+SELECT
+    id,
+    CONCAT_WS(' — ', name, variety) AS culture_full_name,
+    ideal_conditions
+FROM greenhouse.seed_cultures;
+
+UPDATE greenhouse.suppliers
+SET company_name = 'АгроТеплица'
+WHERE id = 1
+RETURNING *;
+
+UPDATE greenhouse.suppliers
+SET rating = rating * 1.10
+WHERE id = 2
+RETURNING
+    id,
+    company_name,
+    rating;
+
+UPDATE greenhouse.seed_cultures
+SET
+    name = 'Томат черри',
+    ideal_conditions = 'Температура 21-26°C, влажность 65-75%, освещение 13-15 ч'
+WHERE id = 1
+RETURNING *;
+
+SELECT
+    id,
+    company_name,
+    rating
+FROM greenhouse.suppliers
+WHERE rating < 4.7;
+
+UPDATE greenhouse.suppliers
+SET rating = rating + 0.2
+WHERE rating < 4.7
+RETURNING
+    id,
+    company_name,
+    rating;
+
+DELETE FROM greenhouse.seed_cultures
+WHERE id = 5
+RETURNING *;
+
+DELETE FROM greenhouse.suppliers
+WHERE rating < 1.5
+RETURNING *;
+
+DELETE FROM greenhouse.suppliers
+WHERE id = 1;
+
+BEGIN;
+
+DELETE FROM greenhouse.seed_batches
+WHERE supplier_id = 1;
+
+DELETE FROM greenhouse.suppliers
+WHERE id = 1
+RETURNING *;
+
+COMMIT;
+
+TRUNCATE TABLE greenhouse.seed_batches
+RESTART IDENTITY;
+
+INSERT INTO greenhouse.seed_batches
+(
+    culture_id,
+    supplier_id,
+    delivery_date,
+    germination_percent
+)
+VALUES
+(
+    1,
+    4,
+    CURRENT_DATE,
+    92.5
+)
+RETURNING *;
+
+SELECT
+    sb.id AS batch_id,
+    sc.name AS culture_name,
+    sc.variety,
+    sb.germination_percent
+FROM greenhouse.seed_batches AS sb
+INNER JOIN greenhouse.seed_cultures AS sc
+ON sb.culture_id = sc.id;
+
+SELECT
+    sb.id AS batch_id,
+    sc.name AS culture_name,
+    s.company_name AS supplier_name,
+    sb.delivery_date,
+    sb.germination_percent
+FROM greenhouse.seed_batches AS sb
+INNER JOIN greenhouse.seed_cultures AS sc
+ON sb.culture_id = sc.id
+INNER JOIN greenhouse.suppliers AS s
+ON sb.supplier_id = s.id
+ORDER BY sb.delivery_date DESC;
+
+SELECT
+    r.id,
+    r.name AS rack_name,
+    c.id AS cell_id,
+    c.planting_date
+FROM greenhouse.racks AS r
+LEFT JOIN greenhouse.cells AS c
+ON r.id = c.rack_id;
+
+SELECT
+    r.id,
+    r.name
+FROM greenhouse.racks AS r
+LEFT JOIN greenhouse.cells AS c
+ON r.id = c.rack_id
+WHERE c.id IS NULL;
+
+SELECT *
+FROM greenhouse.seed_batches
+WHERE germination_percent >
+(
+    SELECT AVG(germination_percent)
+    FROM greenhouse.seed_batches
+);
+
+SELECT *
+FROM greenhouse.seed_batches
+WHERE culture_id IN
+(
+    SELECT id
+    FROM greenhouse.seed_cultures
+    WHERE name = 'Томат черри'
+);
+
+SELECT
+    s.id,
+    s.company_name,
+    s.rating
+FROM greenhouse.suppliers AS s
+WHERE EXISTS
+(
+    SELECT 1
+    FROM greenhouse.seed_batches AS sb
+    WHERE sb.supplier_id = s.id
+);
+
+SELECT
+    c.id,
+    c.planting_date,
+    (
+        SELECT r.name
+        FROM greenhouse.racks AS r
+        WHERE r.id = c.rack_id
+    ) AS rack_name
+FROM greenhouse.cells AS c;
+
+SELECT
+    c.id AS cell_id,
+    r.name AS rack_name,
+    sc.name AS culture_name,
+    sc.variety,
+    s.company_name AS supplier_name,
+    sb.germination_percent,
+    c.planting_date
+FROM greenhouse.cells AS c
+LEFT JOIN greenhouse.seed_cultures AS sc
+ON c.current_culture = sc.id
+LEFT JOIN greenhouse.seed_batches AS sb
+ON sc.id = sb.culture_id
+LEFT JOIN greenhouse.suppliers AS s
+ON sb.supplier_id = s.id
+INNER JOIN greenhouse.racks AS r
+ON c.rack_id = r.id
+WHERE sb.germination_percent > 80
+ORDER BY
+    sb.germination_percent DESC,
+    c.planting_date ASC;
